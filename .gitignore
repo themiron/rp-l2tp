@@ -1,0 +1,9 @@
+*.[oa]
+*.so
+.depend
+Makefile
+config.cache
+config.log
+config.status
+l2tpd
+l2tp-control
