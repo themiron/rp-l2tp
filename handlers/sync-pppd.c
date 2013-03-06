@@ -33,9 +33,6 @@ static char const RCSID[] =
 
 #define MAX_FDS 256
 
-/* Use management tunnel socket under 2.6.23+ */
-/* #define PPPOL2TP_V1 */
-
 extern int pty_get(int *mfp, int *sfp);
 static int establish_tunnel(l2tp_tunnel *tun);
 static void close_tunnel(l2tp_tunnel *tun);
@@ -69,9 +66,6 @@ static l2tp_call_ops my_ops = {
 struct master {
     EventSelector *es;		/* Event selector */
     int fd;			/* Tunnel UDP socket for event-handler loop */
-#ifdef PPPOL2TP_V1
-    int m_fd;			/* Tunnel PPPO2TP socket */
-#endif
     EventHandler *event;	/* Event handler */
 };
 
@@ -315,15 +309,15 @@ readable(EventSelector *es, int fd, unsigned int flags, void *data)
 static int
 establish_session(l2tp_session *ses)
 {
-    int m_pty = -1, s_pty;
-    struct sockaddr_pppol2tp sax;
-    pid_t pid;
     EventSelector *es = ses->tunnel->es;
     struct master *tun = ses->tunnel->private;
     struct slave *sl = malloc(sizeof(struct slave));
+    struct sockaddr_pppol2tp sax;
+    int m_pty = -1, s_pty = -1;
     int i, flags;
     char unit[32], fdstr[10];
     char tidstr[10], sidstr[10];
+    pid_t pid;
 
     ses->private = NULL;
     if (!sl) return -1;
@@ -332,68 +326,60 @@ establish_session(l2tp_session *ses)
 
     /* Get pty */
     if (kernel_mode) {
-	if (!tun) {
-	    free(sl);
-	    return -1;
+	if (!tun) goto err;
+
+	sax.sa_family = AF_PPPOX;
+	sax.sa_protocol = PX_PROTO_OL2TP;
+	sax.pppol2tp.pid = 0;
+	sax.pppol2tp.fd = tun->fd;
+	sax.pppol2tp.addr.sin_family = AF_INET;
+	sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
+	sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
+	sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
+	sax.pppol2tp.s_session = ses->my_id;
+	sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
+	sax.pppol2tp.d_session = ses->assigned_id;
+
+	s_pty = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+	if (s_pty < 0) {
+	    l2tp_set_errmsg("Unable to allocate PPPoL2TP socket.");
+	    goto err;
 	}
-        s_pty = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
-        if (s_pty < 0) {
-            l2tp_set_errmsg("Unable to allocate PPPoL2TP socket.");
-	    free(sl);
-            return -1;
-        }
-        flags = fcntl(s_pty, F_GETFL);
-        if (flags == -1 || fcntl(s_pty, F_SETFL, flags | O_NONBLOCK) == -1) {
-            l2tp_set_errmsg("Unable to set PPPoL2TP socket nonblock.");
-	    close(s_pty);
-	    free(sl);
-            return -1;
-        }
-        sax.sa_family = AF_PPPOX;
-        sax.sa_protocol = PX_PROTO_OL2TP;
-        sax.pppol2tp.pid = 0;
-        sax.pppol2tp.fd = tun->fd;
-        sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
-        sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
-        sax.pppol2tp.addr.sin_family = AF_INET;
-        sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
-        sax.pppol2tp.s_session = ses->my_id;
-        sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
-        sax.pppol2tp.d_session = ses->assigned_id;
-        if (connect(s_pty, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
-            l2tp_set_errmsg("Unable to connect PPPoL2TP socket.");
-	    close(s_pty);
-	    free(sl);
-            return -1;
-        }
+
+	flags = fcntl(s_pty, F_GETFL);
+	if (flags < 0 || fcntl(s_pty, F_SETFL, flags | O_NONBLOCK) < 0) {
+	    l2tp_set_errmsg("Unable to set PPPoL2TP socket nonblock.");
+	    goto err;
+	}
+
+	if (connect(s_pty, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
+	    l2tp_set_errmsg("Unable to connect PPPoL2TP socket.");
+	    goto err;
+	}
+
 	snprintf (fdstr, sizeof(fdstr), "%d", s_pty);
 	snprintf (tidstr, sizeof(tidstr), "%d", ses->tunnel->my_id);
 	snprintf (sidstr, sizeof(sidstr), "%d", ses->my_id);
     } else {
 	if (pty_get(&m_pty, &s_pty) < 0) {
-	    free(sl);
-	    return -1;
+	    goto err;
 	}
-	if (fcntl(m_pty, F_SETFD, FD_CLOEXEC) == -1) {
-	    l2tp_set_errmsg("Unable to set FD_CLOEXEC");
-	    close(m_pty);
-	    close(s_pty);
-	    free(sl);
-	    return -1;
+	flags = fcntl(m_pty, F_GETFD);
+	if (flags < 0 || fcntl(m_pty, F_SETFD, flags | FD_CLOEXEC) < 0) {
+	    l2tp_set_errmsg("Unable to set master socket FD_CLOEXEC.");
+	    goto err;
 	}
     }
 
     /* Fork */
     pid = fork();
     if (pid == (pid_t) -1) {
-	if (m_pty >= 0) close(m_pty);
-	close(s_pty);
-	free(sl);
-	return -1;
+	goto err;
     }
 
+    /* In the parent */
     if (pid) {
-	/* In the parent */
+	sl->fd = m_pty;
 	sl->pid = pid;
 
 	/* Set up handler for when pppd exits */
@@ -402,13 +388,13 @@ establish_session(l2tp_session *ses)
 	/* Close the slave tty */
 	close(s_pty);
 
-	sl->fd = m_pty;
-
 	if (!kernel_mode) {
-            /* Set slave FD non-blocking */
-	    flags = fcntl(sl->fd, F_GETFL);
-	    if (flags >= 0) fcntl(sl->fd, F_SETFL, (long) flags | O_NONBLOCK);
-
+	    /* Set slave FD non-blocking */
+	    flags = fcntl(m_pty, F_GETFL);
+	    if (flags < 0 || fcntl(m_pty, F_SETFL, flags | O_NONBLOCK) < 0) {
+		l2tp_set_errmsg("Unable to set master socket nonblock.");
+		goto err;
+	    }
 	    /* Handle readability on slave end */
 	    sl->event = Event_AddHandler(es, m_pty, EVENT_FLAG_READABLE,
 			 readable, ses);
@@ -417,6 +403,12 @@ establish_session(l2tp_session *ses)
 
 	ses->private = sl;
 	return 0;
+
+err:
+	if (m_pty >= 0) close(m_pty);
+	if (s_pty >= 0) close(s_pty);
+	free(sl);
+	return -1;
     }
 
     /* In the child.  Exec pppd */
@@ -506,49 +498,33 @@ establish_session(l2tp_session *ses)
     _exit(1);
 }
 
+/**********************************************************************
+* %FUNCTION: establish_tunnel
+* %ARGUMENTS:
+*  tunnel -- the L2TP tunnel
+* %RETURNS:
+*  0 if tunnel could be established, -1 otherwise.
+* %DESCRIPTION:
+*  Opens tunnel-specific fds
+***********************************************************************/
 static int establish_tunnel(l2tp_tunnel *tunnel)
 {
     EventSelector *es = tunnel->es;
     struct master *tun;
     struct sockaddr_in addr;
-    socklen_t sock_len;
-    int fd = -1;
-#ifdef PPPOL2TP_V1
     struct sockaddr_pppol2tp sax;
-    int m_fd = -1;
-#endif
+    int fd = -1, m_fd = -1;
     int flags;
 
-    if (!kernel_mode)
-	return 0;
-
     tunnel->private = NULL;
+    if (!kernel_mode) return 0;
+
     tun = malloc(sizeof(struct master));
     if (!tun) return -1;
 
     fd = socket(PF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
-	l2tp_set_errmsg("Unable to allocate tunnel UDP socket: %s");
-	goto err;
-    }
-
-    addr = tunnel->peer_addr;
-    if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-	l2tp_set_errmsg("Unable to connect tunnel UDP socket.");
-	goto err;
-    }
-
-    sock_len = sizeof(struct sockaddr_in);
-    if ((getsockname(fd, (struct sockaddr*) &addr, &sock_len) < 0) ||
-        (sock_len != sizeof(struct sockaddr_in))) {
-	l2tp_set_errmsg("Unable to get name of tunnel UDP socket");
-	goto err;
-    }
-    close(fd);
-
-    fd = socket(PF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) {
-	l2tp_set_errmsg("Unable to allocate tunnel UDP socket: %s");
+	l2tp_set_errmsg("Unable to allocate tunnel UDP socket.");
 	goto err;
     }
 
@@ -556,9 +532,8 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &flags, sizeof(flags));
     setsockopt(fd, SOL_SOCKET, SO_NO_CHECK, &flags, sizeof(flags));
 
-    /* Already set by getsockname
     addr.sin_family = AF_INET;
-    addr.sin_addr = Settings.listen_addr; */
+    addr.sin_addr = Settings.listen_addr;
     addr.sin_port = htons((uint16_t) Settings.listen_port);
     if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 	l2tp_set_errmsg("Unable to bind tunnel UDP socket.");
@@ -577,11 +552,22 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
 	goto err;
     }
 
-#ifdef PPPOL2TP_V1
+    sax.sa_family = AF_PPPOX;
+    sax.sa_protocol = PX_PROTO_OL2TP;
+    sax.pppol2tp.pid = 0;
+    sax.pppol2tp.fd = fd;
+    sax.pppol2tp.addr.sin_family = AF_INET;
+    sax.pppol2tp.addr.sin_addr.s_addr = tunnel->peer_addr.sin_addr.s_addr;
+    sax.pppol2tp.addr.sin_port = tunnel->peer_addr.sin_port;
+    sax.pppol2tp.s_tunnel  = tunnel->my_id;
+    sax.pppol2tp.s_session = 0;
+    sax.pppol2tp.d_tunnel  = tunnel->assigned_id;
+    sax.pppol2tp.d_session = 0;
+
     m_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
     if (m_fd < 0) {
-        l2tp_set_errmsg("Unable to allocate tunnel PPPoL2TP socket.");
-        goto err;
+	l2tp_set_errmsg("Unable to allocate tunnel PPPoL2TP socket.");
+	goto err;
     }
 
     flags = fcntl(m_fd, F_GETFL);
@@ -590,53 +576,44 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
 	goto err;
     }
 
-    sax.sa_family = AF_PPPOX;
-    sax.sa_protocol = PX_PROTO_OL2TP;
-    sax.pppol2tp.pid = 0;
-    sax.pppol2tp.fd = fd;
-    sax.pppol2tp.addr.sin_addr.s_addr = tunnel->peer_addr.sin_addr.s_addr;
-    sax.pppol2tp.addr.sin_port = tunnel->peer_addr.sin_port;
-    sax.pppol2tp.addr.sin_family = AF_INET;
-    sax.pppol2tp.s_tunnel  = tunnel->my_id;
-    sax.pppol2tp.s_session = 0;
-    sax.pppol2tp.d_tunnel  = tunnel->assigned_id;
-    sax.pppol2tp.d_session = 0;
     if (connect(m_fd, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
 	l2tp_set_errmsg("Unable to connect tunnel PPPoL2TP socket.");
 	goto err;
     }
-#endif
 
-    tunnel->private = tun;
+    /* Yeah, we don't need to keep it open */
+    close(m_fd);
+
     tun->es = es;
     tun->fd = fd;
-#ifdef PPPOL2TP_V1
-    tun->m_fd = m_fd;
-#endif
     tun->event = Event_AddHandler(es, fd, EVENT_FLAG_READABLE,
 				  network_readable, NULL);
+    tunnel->private = tun;
+
     return 0;
 
 err:
     if (fd >= 0) close(fd);
-#ifdef PPPOL2TP_V1
-    if (m_fd >= 0) close(tun->m_fd);
-#endif
+    if (m_fd >= 0) close(m_fd);
     if (tun) free(tun);
     return -1;
 }
 
+/**********************************************************************
+* %FUNCTION: close_tunnel
+* %ARGUMENTS:
+*  tunnel -- L2TP tunnel
+* %RETURNS:
+*  Nothing
+* %DESCRIPTION:
+*  Handles tunnel closing
+***********************************************************************/
 static void close_tunnel(l2tp_tunnel *tunnel)
 {
     struct master *tun = tunnel->private;
-
-    if (!kernel_mode || !tun)
-	return;
+    if (!kernel_mode || !tun) return;
 
     tunnel->private = NULL;
-#ifdef PPPOL2TP_V1
-    if (tun->m_fd >= 0) close(tun->m_fd);
-#endif
     if (tun->fd >= 0) close(tun->fd);
     if (tun->event) Event_DelHandler(tun->es, tun->event);
 
