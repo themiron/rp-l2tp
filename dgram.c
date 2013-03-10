@@ -540,6 +540,7 @@ l2tp_dgram_send_to_wire(int fd,
     size_t total_len;
     unsigned char *len_ptr = NULL;
 
+    if (fd < 0) fd = Sock;
     DBG(l2tp_db(DBG_XMIT_RCV,
 	   "dgram_send_to_wire(%d %s:%d) -> %s\n", 
 	   fd, inet_ntoa(to->sin_addr), ntohs(to->sin_port),
@@ -566,8 +567,6 @@ l2tp_dgram_send_to_wire(int fd,
 	*len_ptr = total_len & 255;
     }
     memcpy(buf+cursor, dgram->data, dgram->payload_len);
-
-    if (fd < 0) fd = Sock;
     return sendto(fd, buf, total_len, 0,
 		  (struct sockaddr const *) to, len);
 }
