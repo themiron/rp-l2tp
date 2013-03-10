@@ -152,7 +152,6 @@ process_option(EventSelector *es,
 	       char const *value)
 {
     struct sockaddr_un addr;
-    socklen_t len;
     int fd;
 
     if (!strcmp(name, "*begin*")) return 0;
@@ -176,7 +175,6 @@ process_option(EventSelector *es,
     addr.sun_family = AF_LOCAL;
     strncpy(addr.sun_path, sockname, sizeof(addr.sun_path) - 1);
 
-    len = sizeof(addr);
     if (bind(fd, (struct sockaddr *) &addr, SUN_LEN(&addr)) < 0) {
 	l2tp_set_errmsg("cmd: process_option: bind: %s", strerror(errno));
 	close(fd);
