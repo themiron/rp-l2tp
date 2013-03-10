@@ -466,7 +466,7 @@ err:
 	    PUSH_LNS_OPT(unit);
 	}
 	/* Push plugin options */
-	if (kernel_mode && num_pppd_lac_options <= MAX_OPTS-5) {
+	if (kernel_mode && num_pppd_lac_options <= MAX_OPTS-9) {
 	    PUSH_LNS_OPT("plugin");
 	    PUSH_LNS_OPT("pppol2tp.so");
 	    PUSH_LNS_OPT("pppol2tp");
