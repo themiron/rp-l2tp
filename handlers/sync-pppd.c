@@ -36,6 +36,7 @@ static char const RCSID[] =
 extern int pty_get(int *mfp, int *sfp);
 static int establish_tunnel(l2tp_tunnel *tun);
 static void close_tunnel(l2tp_tunnel *tun);
+static int tunnel_socket(l2tp_tunnel *tun);
 static int establish_session(l2tp_session *ses);
 static void close_session(l2tp_session *ses, char const *reason, int may_reestablish);
 static void handle_frame(l2tp_session *ses, unsigned char *buf, size_t len);
@@ -59,12 +60,14 @@ static l2tp_call_ops my_ops = {
     close_session,
     handle_frame,
     establish_tunnel,
-    close_tunnel
+    close_tunnel,
+    tunnel_socket
 };
 
 /* Tunnel private info */
 struct master {
     EventSelector *es;		/* Event selector */
+    l2tp_tunnel *tun;		/* L2TP tunnel we're hooked to */
     int fd;			/* Tunnel UDP socket for event-handler loop */
     EventHandler *event;	/* Event handler */
 };
@@ -521,6 +524,7 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
 
     tun = malloc(sizeof(struct master));
     if (!tun) return -1;
+    tun->tun = tunnel;
 
     fd = socket(PF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
@@ -613,11 +617,30 @@ static void close_tunnel(l2tp_tunnel *tunnel)
     struct master *tun = tunnel->private;
     if (!kernel_mode || !tun) return;
 
+    /* Detach master */
     tunnel->private = NULL;
+
     if (tun->fd >= 0) close(tun->fd);
     if (tun->event) Event_DelHandler(tun->es, tun->event);
 
     free(tun);
+}
+
+/**********************************************************************
+* %FUNCTION: tunnel_socket
+* %ARGUMENTS:
+*  tunnel -- L2TP tunnel
+* %RETURNS:
+*  fd of tunnel
+* %DESCRIPTION:
+*  Returns tunnel fd if available, -1 otherwise
+***********************************************************************/
+static int tunnel_socket(l2tp_tunnel *tunnel)
+{
+    struct master *tun = tunnel->private;
+    if (!kernel_mode || !tun) return -1;
+
+    return tun->fd;
 }
 
 static l2tp_lns_handler my_lns_handler = {

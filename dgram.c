@@ -512,14 +512,16 @@ l2tp_dgram_take_from_wire(int fd, struct sockaddr_in *from)
 	    (unsigned int) msg[1];
     }
     DBG(l2tp_db(DBG_XMIT_RCV,
-	   "dgram_take_from_wire(%d) -> %s\n",
-	   fd, l2tp_debug_describe_dgram(dgram)));
+	   "dgram_take_from_wire(%d %s:%d) -> %s\n",
+	   fd, inet_ntoa(from->sin_addr), ntohs(from->sin_port),
+	   l2tp_debug_describe_dgram(dgram)));
     return dgram;
 }
 
 /**********************************************************************
 * %FUNCTION: dgram_send_to_wire
 * %ARGUMENTS:
+*  fd   -- socket to write to, if -1 use server
 *  dgram -- datagram to send
 *  to -- address to send datagram to
 * %RETURNS:
@@ -528,7 +530,8 @@ l2tp_dgram_take_from_wire(int fd, struct sockaddr_in *from)
 *  Adjusts header fields from host byte order, then sends datagram
 ***********************************************************************/
 int
-l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
+l2tp_dgram_send_to_wire(int fd, 
+			l2tp_dgram const *dgram,
 			struct sockaddr_in const *to)
 {
     unsigned char buf[MAX_PACKET_LEN+128];
@@ -538,8 +541,8 @@ l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
     unsigned char *len_ptr = NULL;
 
     DBG(l2tp_db(DBG_XMIT_RCV,
-	   "dgram_send_to_wire(%s:%d) -> %s\n", 
-	   inet_ntoa(to->sin_addr), ntohs(to->sin_port),
+	   "dgram_send_to_wire(%d %s:%d) -> %s\n", 
+	   fd, inet_ntoa(to->sin_addr), ntohs(to->sin_port),
 	   l2tp_debug_describe_dgram(dgram)));
     buf[0] = dgram->bits;
     buf[1] = dgram->version;
@@ -563,7 +566,9 @@ l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
 	*len_ptr = total_len & 255;
     }
     memcpy(buf+cursor, dgram->data, dgram->payload_len);
-    return sendto(Sock, buf, total_len, 0,
+
+    if (fd < 0) fd = Sock;
+    return sendto(fd, buf, total_len, 0,
 		  (struct sockaddr const *) to, len);
 }
 

@@ -270,6 +270,7 @@ tunnel_xmit_queued_messages(l2tp_tunnel *tunnel)
 {
     l2tp_dgram *dgram;
     struct timeval t;
+    int fd = -1;
 
     dgram = tunnel->xmit_new_dgrams;
     if (!dgram) return;
@@ -290,7 +291,11 @@ tunnel_xmit_queued_messages(l2tp_tunnel *tunnel)
 	   tunnel establishment was complete */
 	dgram->tid = tunnel->assigned_id;
 
-	if (l2tp_dgram_send_to_wire(dgram, &tunnel->peer_addr) < 0) {
+	/* Tunnel may have own socket to sent over */
+	if (tunnel->call_ops && tunnel->call_ops->tunnel_socket) {
+	    fd = tunnel->call_ops->tunnel_socket(tunnel);
+	}
+	if (l2tp_dgram_send_to_wire(fd, dgram, &tunnel->peer_addr) < 0) {
 	    break;
 	}
 
@@ -1318,6 +1323,7 @@ tunnel_schedule_destruction(l2tp_tunnel *tunnel)
 void
 tunnel_send_ZLB(l2tp_tunnel *tunnel)
 {
+    int fd = -1;
     l2tp_dgram *dgram =
 	l2tp_dgram_new_control(MESSAGE_ZLB, tunnel->assigned_id, 0);
     if (!dgram) {
@@ -1326,7 +1332,13 @@ tunnel_send_ZLB(l2tp_tunnel *tunnel)
     }
     dgram->Nr = tunnel->Nr;
     dgram->Ns = tunnel->Ns_on_wire;
-    l2tp_dgram_send_to_wire(dgram, &tunnel->peer_addr);
+
+    /* Tunnel may have own socket to sent over */
+    if (tunnel->call_ops && tunnel->call_ops->tunnel_socket) {
+	fd = tunnel->call_ops->tunnel_socket(tunnel);
+    }
+    l2tp_dgram_send_to_wire(fd, dgram, &tunnel->peer_addr);
+
     l2tp_dgram_free(dgram);
 }
 

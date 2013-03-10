@@ -184,6 +184,9 @@ typedef struct l2tp_call_ops_t {
     /* Called when tunnel must be closed.  May be called without
        established() being called if tunnel could not be established.*/
     void (*tunnel_close)(l2tp_tunnel *tun);
+
+    /* Called to obtain per-tunnel UDP socket, if available. */
+    int (*tunnel_socket)(l2tp_tunnel *tun);
 } l2tp_call_ops;
 
 /* an LNS handler */
@@ -410,7 +413,7 @@ l2tp_dgram *l2tp_dgram_new(size_t len);
 l2tp_dgram *l2tp_dgram_new_control(uint16_t msg_type, uint16_t tid, uint16_t sid);
 void l2tp_dgram_free(l2tp_dgram *dgram);
 l2tp_dgram *l2tp_dgram_take_from_wire(int fd, struct sockaddr_in *from);
-int l2tp_dgram_send_to_wire(l2tp_dgram const *dgram,
+int l2tp_dgram_send_to_wire(int fd, l2tp_dgram const *dgram,
 		       struct sockaddr_in const *to);
 int l2tp_dgram_send_ppp_frame(l2tp_session *ses, unsigned char const *buf,
 			 int len);
