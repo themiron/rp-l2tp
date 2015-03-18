@@ -2,6 +2,8 @@ dnl Process this file with autoconf to produce a configure script.
 dnl LIC: GPL
 AC_INIT(l2tp.h)
 
+AM_MAINTAINER_MODE
+
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL

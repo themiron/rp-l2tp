@@ -9,6 +9,7 @@ docdir=@prefix@/doc/l2tp-$(VERSION)
 install=@INSTALL@
 install_dir=@INSTALL@ -d
 sbindir=@sbindir@
+datarootdir = @datarootdir@
 
 HANDLERS=sync-pppd.so cmd.so
 

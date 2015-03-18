@@ -26,6 +26,7 @@ install=@INSTALL@
 install_dir=@INSTALL@ -d
 sbindir=@sbindir@
 sysconfdir=@sysconfdir@
+datarootdir = @datarootdir@
 
 OBJS=auth.o debug.o dgram.o main.o md5.o network.o options.o peer.o session.o tunnel.o utils.o
 EXTRA_LIBS=@LIBEVENT@/*.o -ldl
