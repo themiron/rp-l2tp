@@ -18,7 +18,14 @@ PPP sessions over a network or transport protocol (in this case, UDP.)
 Sets the debug level to \fInum\fR.  Of interest mostly to
 \fBl2tpd\fR developers.  \fInum\fR is a bitmask; set it to
 65535 for maximum debugging information.
-
+.TP
+.B \-c \fIconfig-file\fR
+Tells \fBl2tpd\fR to use an alternate config file.  Default is
+/etc/l2tp/l2tp.conf
+.TP
+.B \-p \fIpid-file\fR
+Tells \fBl2tpd\fR to use an alternate pid file.  Default is
+/var/run/l2tpd.pid
 .TP
 .B \-f
 Do not fork.  Normally, \fBl2tpd\fR forks and puts itself in the
