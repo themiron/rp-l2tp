@@ -33,8 +33,8 @@ usage(int argc, char *argv[], int exitcode)
     fprintf(stderr, "Usage: %s [options]\n", argv[0]);
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "-d level               -- Set debugging to 'level'\n");
-    fprintf(stderr, "-c config-file         -- Set alternate config file\n");
-    fprintf(stderr, "-p pid-file            -- Set alternate pid file\n");
+    fprintf(stderr, "-c config-file         -- Set config file\n");
+    fprintf(stderr, "-p pid-file            -- Set pid file\n");
     fprintf(stderr, "-f                     -- Do not fork\n");
     fprintf(stderr, "-h                     -- Print usage\n");
     fprintf(stderr, "\nThis program is licensed under the terms of\nthe GNU General Public License, Version 2.\n");
