@@ -336,18 +336,6 @@ establish_session(l2tp_session *ses)
     if (kernel_mode) {
 	if (!tun) goto err;
 
-	sax.sa_family = AF_PPPOX;
-	sax.sa_protocol = PX_PROTO_OL2TP;
-	sax.pppol2tp.pid = 0;
-	sax.pppol2tp.fd = tun->fd;
-	sax.pppol2tp.addr.sin_family = AF_INET;
-	sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
-	sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
-	sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
-	sax.pppol2tp.s_session = ses->my_id;
-	sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
-	sax.pppol2tp.d_session = ses->assigned_id;
-
 	s_pty = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (s_pty < 0) {
 	    l2tp_set_errmsg("Unable to allocate PPPoL2TP socket.");
@@ -360,6 +348,18 @@ establish_session(l2tp_session *ses)
 	    goto err;
 	}
 
+	memset(&sax, 0, sizeof(sax));
+	sax.sa_family = AF_PPPOX;
+	sax.sa_protocol = PX_PROTO_OL2TP;
+	sax.pppol2tp.pid = 0;
+	sax.pppol2tp.fd = tun->fd;
+	sax.pppol2tp.addr.sin_family = AF_INET;
+	sax.pppol2tp.addr.sin_addr.s_addr = ses->tunnel->peer_addr.sin_addr.s_addr;
+	sax.pppol2tp.addr.sin_port = ses->tunnel->peer_addr.sin_port;
+	sax.pppol2tp.s_tunnel  = ses->tunnel->my_id;
+	sax.pppol2tp.s_session = ses->my_id;
+	sax.pppol2tp.d_tunnel  = ses->tunnel->assigned_id;
+	sax.pppol2tp.d_session = ses->assigned_id;
 	if (connect(s_pty, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
 	    l2tp_set_errmsg("Unable to connect PPPoL2TP socket.");
 	    goto err;
@@ -561,18 +561,6 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
 	goto err;
     }
 
-    sax.sa_family = AF_PPPOX;
-    sax.sa_protocol = PX_PROTO_OL2TP;
-    sax.pppol2tp.pid = 0;
-    sax.pppol2tp.fd = fd;
-    sax.pppol2tp.addr.sin_family = AF_INET;
-    sax.pppol2tp.addr.sin_addr.s_addr = tunnel->peer_addr.sin_addr.s_addr;
-    sax.pppol2tp.addr.sin_port = tunnel->peer_addr.sin_port;
-    sax.pppol2tp.s_tunnel  = tunnel->my_id;
-    sax.pppol2tp.s_session = 0;
-    sax.pppol2tp.d_tunnel  = tunnel->assigned_id;
-    sax.pppol2tp.d_session = 0;
-
     m_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
     if (m_fd < 0) {
 	l2tp_set_errmsg("Unable to allocate tunnel PPPoL2TP socket.");
@@ -585,6 +573,18 @@ static int establish_tunnel(l2tp_tunnel *tunnel)
 	goto err;
     }
 
+    memset(&sax, 0, sizeof(sax));
+    sax.sa_family = AF_PPPOX;
+    sax.sa_protocol = PX_PROTO_OL2TP;
+    sax.pppol2tp.pid = 0;
+    sax.pppol2tp.fd = fd;
+    sax.pppol2tp.addr.sin_family = AF_INET;
+    sax.pppol2tp.addr.sin_addr.s_addr = tunnel->peer_addr.sin_addr.s_addr;
+    sax.pppol2tp.addr.sin_port = tunnel->peer_addr.sin_port;
+    sax.pppol2tp.s_tunnel  = tunnel->my_id;
+    sax.pppol2tp.s_session = 0;
+    sax.pppol2tp.d_tunnel  = tunnel->assigned_id;
+    sax.pppol2tp.d_session = 0;
     if (connect(m_fd, (struct sockaddr *)&sax, sizeof(sax)) < 0) {
 	l2tp_set_errmsg("Unable to connect tunnel PPPoL2TP socket.");
 	goto err;
