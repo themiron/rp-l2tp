@@ -33,7 +33,8 @@ usage(int argc, char *argv[], int exitcode)
     fprintf(stderr, "Usage: %s [options]\n", argv[0]);
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "-d level               -- Set debugging to 'level'\n");
-    fprintf(stderr, "-p                     -- Set pid file\n");
+    fprintf(stderr, "-c config-file         -- Set alternate config file\n");
+    fprintf(stderr, "-p pid-file            -- Set alternate pid file\n");
     fprintf(stderr, "-f                     -- Do not fork\n");
     fprintf(stderr, "-h                     -- Print usage\n");
     fprintf(stderr, "\nThis program is licensed under the terms of\nthe GNU General Public License, Version 2.\n");
@@ -109,8 +110,9 @@ main(int argc, char *argv[])
     int do_fork = 1;
     int debugmask = 0;
     char *pidfile = "/var/run/l2tpd.pid";
+    char *configfile = SYSCONFDIR"/l2tp/l2tp.conf";
 
-    while((opt = getopt(argc, argv, "d:p:fh")) != -1) {
+    while((opt = getopt(argc, argv, "d:c:p:fh")) != -1) {
 	switch(opt) {
 	case 'h':
 	    usage(argc, argv, EXIT_SUCCESS);
@@ -120,6 +122,9 @@ main(int argc, char *argv[])
 	    break;
 	case 'p':
 	    pidfile = optarg;
+	    break;
+	case 'c':
+	    configfile = optarg;
 	    break;
 	case 'd':
 	    sscanf(optarg, "%d", &debugmask);
@@ -139,7 +144,7 @@ main(int argc, char *argv[])
 	l2tp_die();
     }
 
-    if (l2tp_parse_config_file(es, SYSCONFDIR"/l2tp/l2tp.conf") < 0) {
+    if (l2tp_parse_config_file(es, configfile) < 0) {
 	l2tp_die();
     }
 
