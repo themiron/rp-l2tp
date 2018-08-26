@@ -22,6 +22,7 @@ static char const RCSID[] =
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_pppol2tp.h>
@@ -178,7 +179,9 @@ handle_frame(l2tp_session *ses,
     /* TODO: Add error checking */
     if (sl->fd < 0) {
         l2tp_set_errmsg("Attempt to write %d bytes to non existent fd.", len);
-    } else n = write(sl->fd, buf, len);
+    } else do {
+        n = write(sl->fd, buf, len);
+    } while (n < 0 && errno == EINTR);
 }
 
 /**********************************************************************
@@ -288,7 +291,9 @@ readable(EventSelector *es, int fd, unsigned int flags, void *data)
        we could have a DoS potential */
     while(iters--) {
 	/* EXTRA_HEADER_ROOM bytes extra space for l2tp header */
-	n = read(fd, buf+EXTRA_HEADER_ROOM, sizeof(buf)-EXTRA_HEADER_ROOM);
+	do {
+	    n = read(fd, buf+EXTRA_HEADER_ROOM, sizeof(buf)-EXTRA_HEADER_ROOM);
+	} while (n < 0 && errno == EINTR);
 
 	/* TODO: Check this.... */
 	if (n <= 2) return;

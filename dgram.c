@@ -340,8 +340,10 @@ l2tp_dgram_take_from_wire(int fd, struct sockaddr_in *from)
     while(1) {
 	if (--iters <= 0) return NULL;
 	framelen = -1;
-	r = recvfrom(fd, buf, MAX_PACKET_LEN, 0,
+	do {
+	    r = recvfrom(fd, buf, MAX_PACKET_LEN, 0,
 		     (struct sockaddr *) from, &len);
+	} while (r < 0 && errno == EINTR);
 	if (r <= 0) {
 	    return NULL;
 	}
@@ -536,7 +538,7 @@ l2tp_dgram_send_to_wire(int fd,
 {
     unsigned char buf[MAX_PACKET_LEN+128];
     socklen_t len = sizeof(struct sockaddr_in);
-    int cursor = 2;
+    int r, cursor = 2;
     size_t total_len;
     unsigned char *len_ptr = NULL;
 
@@ -567,8 +569,11 @@ l2tp_dgram_send_to_wire(int fd,
 	*len_ptr = total_len & 255;
     }
     memcpy(buf+cursor, dgram->data, dgram->payload_len);
-    return sendto(fd, buf, total_len, 0,
+    do {
+	r = sendto(Sock, buf, total_len, 0,
 		  (struct sockaddr const *) to, len);
+    } while (r < 0 && errno == EINTR);
+    return r;
 }
 
 /**********************************************************************
@@ -1047,9 +1052,11 @@ l2tp_dgram_send_ppp_frame(l2tp_session *ses,
     real_buf[5] = ses->assigned_id & 0xFF;
     real_buf[6] = 0xFF;		/* HDLC address */
     real_buf[7] = 0x03;		/* HDLC control */
-    r = sendto(Sock, real_buf, len+8, 0,
+    do {
+	r = sendto(Sock, real_buf, len+8, 0,
 	       (struct sockaddr const *) &tunnel->peer_addr,
 	       sizeof(struct sockaddr_in));
+    } while (r < 0 && errno == EINTR);
     /* Snoop, if necessary */
     if (ses->snooping) {
 	l2tp_session_lcp_snoop(ses, buf, len, 0);
